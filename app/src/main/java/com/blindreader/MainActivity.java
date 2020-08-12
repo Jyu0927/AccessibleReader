@@ -8,13 +8,23 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.SoundPool;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
+import android.text.SpannableString;
+import android.text.SpannableStringBuilder;
+import android.text.style.TtsSpan;
+import android.text.style.TtsSpan.VerbatimBuilder;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.GestureDetector;
@@ -42,7 +52,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     String[] word_text;
     GestureDetectorCompat gesture_detector;
     int cur_sentence;
-    private static final int SWIPE_THRESHOLD = 400;
+    private static final int SWIPE_THRESHOLD = 300;
     private static final int SWIPE_VELOCITY_THRESHOLD = 100;
     MyView myview;
     int contentViewTop;
@@ -55,7 +65,12 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     private static final String TAG = "order";
     boolean listening;
     int word_index;
-    //ViewGroup.MarginLayoutParams margin_params;
+    double[] word_last_touched_time;
+    Vibrator vibrator;
+    SoundPool sounds;
+    int clickSound;
+    double stop_lastTime;
+
 
 
     @Override
@@ -65,18 +80,17 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         myview = new MyView(this, null);
         setContentView(myview);
         gesture_detector = new GestureDetectorCompat(this, this);
-        tts = new TextToSpeech(this,this);
+        tts = new TextToSpeech(this,this, "com.google.android.tts");
+        tts.setPitch(0.9f);
         text = new Text();
         textContent = text.rawtext;
         sentence_text = text.sentence_text;
+        new TtsSpan.VerbatimBuilder().setVerbatim(sentence_text[0]);
         word_text = text.word_text;
+        text.punc_word_text(word_text);
         words_in_page = text.num_words_in_sentence;
-        //myview.setDimension(8, 6);
-        /*words_in_page = new int[sentence_text.length];
-        for (int a = 0; a < sentence_text.length; a++) {
-            words_in_page[a] = sentence_text[a].length();
-        }*/
-        //margin_params = (ViewGroup.MarginLayoutParams) R.layout.activity_main.
+        word_last_touched_time = new double[word_text.length];
+        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
     }
 
     @Override
@@ -96,9 +110,18 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         cur_page = 0;
         word_count_when_stop = 0;
         sentence_finished = -1;
-        listening = true;
+        listening = false;
         word_index = -1;
         words_per_page = myview.num_col * myview.num_row;
+        AudioAttributes attributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        sounds = new SoundPool.Builder()
+                .setAudioAttributes(attributes)
+                .build();
+        clickSound = sounds.load(this, R.raw.click, 1);
+        stop_lastTime = 0;
 
 
         if (status == SUCCESS) {
@@ -109,6 +132,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                     String[] parts = s.split("-");
                     if (parts[0].equals("word")) {
                         word_index = Integer.parseInt(parts[1]);
+                        Log.d(TAG, "onStart: started");
                     }
                 }
 
@@ -128,10 +152,14 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         } else {
             Toast.makeText(MainActivity.this, "TextToSpeech failed", Toast.LENGTH_SHORT).show();
         }
-        startPlay(cur_sentence);
+        //start reading only at double finger tap (initial listening set to false)
+        //startPlay(cur_sentence);
     }
 
     private void startPlay(int cur_num) {
+        if (tts.isSpeaking()) {
+            tts.stop();
+        }
         for (int c = cur_num; c < sentence_text.length; c++) {
             if (c == cur_num) {
                 tts.speak(sentence_text[c], QUEUE_FLUSH, null, String.valueOf(c));
@@ -152,6 +180,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             Log.e(TAG, "onTouchEvent: listening is "+listening);
             Log.e(TAG, "onTouchEvent: speaking is "+tts.isSpeaking());
             if (listening) {
+                stop_lastTime = System.currentTimeMillis();
                 tts.stop();
                 word_count_when_stop = 0;
                 for (int i = 0; i < cur_sentence;i++) {
@@ -173,7 +202,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 if (tts.isSpeaking()) {
                     tts.stop();
                 }
-                tts.speak("暂停", QUEUE_FLUSH, null, null);
+                //tts.speak("暂停", QUEUE_FLUSH, null, null);
+                sounds.play(clickSound, 1, 1, 0, 0, 1);
             } else {
                 startPlay(cur_sentence);
                 Toast.makeText(MainActivity.this, "start at sentence " + cur_sentence, Toast.LENGTH_SHORT).show();
@@ -181,13 +211,12 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             }
         } else if (action == MotionEvent.ACTION_DOWN | action == MotionEvent.ACTION_MOVE) {
             //Log.d(TAG, "onTouchEvent: single time is"+System.currentTimeMillis());
-            if (!listening) {
-                Log.d(TAG, "onTouchEvent: 摸读了");
-                myview.getHighlightCell(e.getX(), e.getY()-contentViewTop-statusBarHeight, tts, word_text, cur_page, word_index);
+            if (!listening && (System.currentTimeMillis() - stop_lastTime > 300)) {
+                myview.getHighlightCell(e.getX(), e.getY()-contentViewTop-statusBarHeight,
+                        tts, word_text, cur_page, word_index, word_last_touched_time);
                 //Toast.makeText(MainActivity.this, "location at" + (e.getY()-contentViewTop-statusBarHeight), Toast.LENGTH_SHORT).show();
                 myview.invalidate();
-            } else {
-                //Toast.makeText(MainActivity.this, "听读中，勿扰", Toast.LENGTH_SHORT).show();
+                vibrate_on_touch(e.getX());
             }
         } else if (action == MotionEvent.ACTION_UP) {
             Log.d(TAG, "onTouchEvent: action up");
@@ -197,6 +226,14 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         listening = local_lis;
         this.gesture_detector.onTouchEvent(e);
         return super.onTouchEvent(e);
+    }
+
+    public void vibrate_on_touch(float x) {
+        int col = (int) (x - (float) myview.edge) / myview.cell_width;
+        if (Math.abs(col * myview.cell_width + myview.edge-x) <= 10) {
+            Log.d(TAG, "vibrate_on_touch: supposed to vibrate");
+            vibrator.vibrate(VibrationEffect.createOneShot(30, 20));
+        }
     }
 
     public static int roundUp(int num, int divisor) {
@@ -255,7 +292,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                     if (tts.isSpeaking()) {
                         tts.stop();
                     }
-                    tts.speak("下一页",TextToSpeech.QUEUE_FLUSH, null, null);
+                    tts.speak("到第"+ (cur_page+1)+"页",TextToSpeech.QUEUE_FLUSH, null, null);
                     Log.d(TAG, "onFling: turned to page "+cur_page+" of total "+ page_count);
                 }
                 return true;
@@ -266,7 +303,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                     if (tts.isSpeaking()) {
                         tts.stop();
                     }
-                    tts.speak("上一页",TextToSpeech.QUEUE_FLUSH, null, null);
+                    tts.speak("到第"+ (cur_page+1)+"页",TextToSpeech.QUEUE_FLUSH, null, null);
                     Log.d(TAG, "onFling: turned to page "+cur_page);
                 } else {
                     tts.speak("已经在首页",TextToSpeech.QUEUE_FLUSH, null, null);
@@ -295,7 +332,20 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     }
 
     private void onSwipeLeft() {
-        if (listening) {
+        tts.stop();
+        if (cur_sentence > 0) {
+            cur_sentence -= 1;
+        } else {
+            tts.speak("已经在首句", QUEUE_FLUSH, null, null);
+            while (tts.isSpeaking()) {
+            }
+        }
+        startPlay(cur_sentence);
+        if (!listening) {
+            listening = true;
+        }
+
+        /*if (listening) {
             tts.stop();
             if (cur_sentence > 0) {
                 cur_sentence -= 1;
@@ -308,14 +358,29 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             if (cur_sentence > 0) {
                 cur_sentence -= 1;
             }
-        }
+            //play right after swipe, edited from original
+            startPlay(cur_sentence);
+            listening = true;
+        }*/
         Toast.makeText(MainActivity.this, "last sentence", Toast.LENGTH_SHORT).show();
     }
 
     private void onSwipeRight() {
         Log.d(TAG, "onSwipeRight: listening status"+listening);
         Log.d(TAG, "onSwipeRight: speaking status"+tts.isSpeaking());
-        if (listening) {
+        tts.stop();
+        if (cur_sentence < (text.sentence_text.length-1)) {
+            cur_sentence += 1;
+        } else {
+            tts.speak("已经在尾句", QUEUE_FLUSH, null, null);
+            while (tts.isSpeaking()) {
+            }
+        }
+        startPlay(cur_sentence);
+        if (!listening) {
+            listening = true;
+        }
+        /*if (listening) {
             tts.stop();
             if (cur_sentence < (text.sentence_text.length-1)) {
                 cur_sentence += 1;
@@ -329,7 +394,10 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             if (cur_sentence < (text.sentence_text.length -1)) {
                 cur_sentence += 1;
             }
-        }
+            //play right after swipe, edited from original
+            startPlay(cur_sentence);
+            listening = true;
+        }*/
         Toast.makeText(MainActivity.this, "next sentence", Toast.LENGTH_SHORT).show();
     }
 
@@ -339,5 +407,16 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
 
     private void onSwipeDown() {
         Toast.makeText(MainActivity.this, "swiped down", Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onDestroy() {
+        sounds.release();
+        sounds = null;
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
+        super.onDestroy();
     }
 }

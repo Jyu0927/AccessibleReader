@@ -50,14 +50,6 @@ public class MyView extends View{
         return cell_height;
     }
 
-    /*public void highlightCell(float x, float y, ) {
-        if (x > edge & x < getWidth()-edge & y > edge & y < getHeight()-edge) {
-            int row = (int)(y - (float)edge)/cell_height;
-            int col = (int)(x - (float)edge)/cell_width;
-            drawRec(col, row, );
-        }
-
-    }*/
 
     public boolean checkTurnNextPage(float x1, float x2, float y1, float y2) {
         //Log.d(TAG, "onFling: cor is "+e.getX()+","+e.getY());
@@ -65,7 +57,7 @@ public class MyView extends View{
         Log.d(TAG, "onFling: cor status second"+(x1 < getWidth()-edge));
         Log.d(TAG, "onFling: cor status third"+(y1 > edge));
         Log.d(TAG, "onFling: cor status forth"+(y1 < getHeight()-edge));
-        if (x1 > edge & x1 < getWidth()-edge & y1 > edge & y1 < getHeight()-edge) {
+        if (x1 > edge & x1 < (edge+cell_width*num_col) & y1 > edge & y1 < getHeight()-edge) {
             int row = (int) (y1 - (float) edge) / cell_height;
             int col = (int) (x1 - (float) edge) / cell_width;
             Log.d(TAG, "checkTurnNextPage: position is "+row+","+col);
@@ -80,7 +72,7 @@ public class MyView extends View{
     }
 
     public boolean checkTurnLastPage(float x1, float x2, float y1, float y2) {
-        if (x1 > edge & x1 < getWidth()-edge & y1 > edge & y1 < getHeight()-edge) {
+        if (x1 > edge & x1 < (edge+cell_width*num_col) & y1 > edge & y1 < getHeight()-edge) {
             int row = (int) (y1 - (float) edge) / cell_height;
             int col = (int) (x1 - (float) edge) / cell_width;
             Log.d(TAG, "checkTurnNextPage: position is "+row+","+col);
@@ -94,33 +86,45 @@ public class MyView extends View{
         return false;
     }
 
-    public void getHighlightCell(float x, float y, TextToSpeech tts, String[] text, int page, int last_word) {
-        Log.d(TAG, "getHighlightCell: first movement cor is "+x+","+y);
-        if (x > edge & x < getWidth()-edge & y > edge & y < getHeight()-edge) {
-            Log.d(TAG, "getHighlightCell: reached here");
+    public void getHighlightCell(float x, float y, TextToSpeech tts, String[] text, int page, int last_word, double[] lastTime) {
+        //Log.d(TAG, "getHighlightCell: cors are"+x+","+y);
+        if (x > edge & x < (edge+cell_width*num_col) & y > edge & y < getHeight()-edge) {
             int row = (int) (y - (float) edge) / cell_height;
             int col = (int) (x - (float) edge) / cell_width;
             highlighted[0] = col;
             highlighted[1] = row;
             int word_index = page * num_row * num_col + row * num_col + col;
-            Log.d(TAG, "getHighlightCell: reached here1");
             if (word_index >= new Text().word_text.length) {
-                Log.d(TAG, "getHighlightCell: reached here2");
-                tts.speak("读完了", TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
+                if (!tts.isSpeaking()) {
+                    tts.speak("读完了", TextToSpeech.QUEUE_FLUSH, null, null);
+                }
+                return;
+            }
+            double cur_time = System.currentTimeMillis();
+            if (cur_time - lastTime[word_index] < 2000) {
                 return;
             }
             if (!tts.isSpeaking()) {
                 tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
                 //tts.stop();
             } else {
-                if (last_word != word_index) {
+                tts.stop();
+                tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
+
+                /*if (last_word != word_index) {
                     tts.stop();
                     tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
-                }
+                }*/
             }
+            lastTime[word_index] = cur_time;
             //tts.stop();
             //you may want to change the utteranceid to word_index
-            Log.d(TAG, "getHighlightCell: "+row+","+col);
+            Log.d(TAG, "getHighlightCell: last word idnex is" +last_word);
+            Log.d(TAG, "getHighlightCell: "+row+","+col+"word index "+word_index+" changed to"+cur_time);
+        } else {
+            if (!tts.isSpeaking()) {
+                tts.speak("无内容区域", TextToSpeech.QUEUE_FLUSH, null, null);
+            }
         }
 
     }
