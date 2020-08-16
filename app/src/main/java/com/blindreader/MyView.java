@@ -93,6 +93,9 @@ public class MyView extends View{
             int col = (int) (x - (float) edge) / cell_width;
             highlighted[0] = col;
             highlighted[1] = row;
+            MainActivity.last_highlighted[0] = col;
+            MainActivity.last_highlighted[1] = row;
+            MainActivity.no_lift_since_high_light = true;
             int word_index = page * num_row * num_col + row * num_col + col;
             if (word_index >= new Text().word_text.length) {
                 if (!tts.isSpeaking()) {
@@ -110,21 +113,26 @@ public class MyView extends View{
             } else {
                 tts.stop();
                 tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
-
-                /*if (last_word != word_index) {
-                    tts.stop();
-                    tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
-                }*/
             }
             lastTime[word_index] = cur_time;
             //tts.stop();
             //you may want to change the utteranceid to word_index
-            Log.d(TAG, "getHighlightCell: last word idnex is" +last_word);
-            Log.d(TAG, "getHighlightCell: "+row+","+col+"word index "+word_index+" changed to"+cur_time);
         } else {
-            if (!tts.isSpeaking()) {
-                tts.speak("无内容区域", TextToSpeech.QUEUE_FLUSH, null, null);
+            double cur_time2 = System.currentTimeMillis();
+            if (cur_time2 - lastTime[lastTime.length-1] < 1500) {
+                return;
             }
+            if (tts.isSpeaking()) {
+                tts.stop();
+            }
+            if (x < edge && y > edge && y < getHeight()-edge) {
+                int row = (int) (y - (float) edge) / cell_height;
+                tts.speak("第"+(row+1)+"航", TextToSpeech.QUEUE_FLUSH, null, "no_content");
+            } else {
+                tts.speak("无内容区域", TextToSpeech.QUEUE_FLUSH, null, "no_content");
+            }
+            lastTime[lastTime.length-1] = cur_time2;
+            return;
         }
 
     }

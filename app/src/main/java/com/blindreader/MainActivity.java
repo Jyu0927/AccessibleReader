@@ -53,7 +53,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     GestureDetectorCompat gesture_detector;
     int cur_sentence;
     private static final int SWIPE_THRESHOLD = 300;
-    private static final int SWIPE_VELOCITY_THRESHOLD = 100;
+    private static final int SWIPE_VELOCITY_THRESHOLD = 1000;
     MyView myview;
     int contentViewTop;
     int statusBarHeight;
@@ -70,6 +70,9 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     SoundPool sounds;
     int clickSound;
     double stop_lastTime;
+    public static int[] last_highlighted;
+    public static boolean no_lift_since_high_light;
+    double last_turn_page_time;
 
 
 
@@ -89,7 +92,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         word_text = text.word_text;
         text.punc_word_text(word_text);
         words_in_page = text.num_words_in_sentence;
-        word_last_touched_time = new double[word_text.length];
+        word_last_touched_time = new double[word_text.length + 1];
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
     }
 
@@ -122,6 +125,10 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 .build();
         clickSound = sounds.load(this, R.raw.click, 1);
         stop_lastTime = 0;
+        last_highlighted = new int[2];
+        last_highlighted[0] = -1;
+        last_highlighted[1] = -1;
+        no_lift_since_high_light = false;
 
 
         if (status == SUCCESS) {
@@ -138,7 +145,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
 
                 @Override
                 public void onDone(String s) {
-                    Log.d(TAG, "onDone: s is " +s);
+                    Log.d(TAG, "onDone: s is " +s+","+s.equals("no_content"));
                     //speaking stops
                     sentence_finished = Integer.parseInt(s);
                     cur_sentence = sentence_finished + 1;
@@ -210,27 +217,51 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 local_lis = true;
             }
         } else if (action == MotionEvent.ACTION_DOWN | action == MotionEvent.ACTION_MOVE) {
-            //Log.d(TAG, "onTouchEvent: single time is"+System.currentTimeMillis());
             if (!listening && (System.currentTimeMillis() - stop_lastTime > 300)) {
                 myview.getHighlightCell(e.getX(), e.getY()-contentViewTop-statusBarHeight,
                         tts, word_text, cur_page, word_index, word_last_touched_time);
                 //Toast.makeText(MainActivity.this, "location at" + (e.getY()-contentViewTop-statusBarHeight), Toast.LENGTH_SHORT).show();
                 myview.invalidate();
-                vibrate_on_touch(e.getX());
+                vibrate_on_touch(e.getX(), e.getY()-contentViewTop-statusBarHeight);
+            }
+            if (no_lift_since_high_light && (System.currentTimeMillis() - last_turn_page_time > 2000)) {
+                Log.d("turnpage", "onTouchEvent: turn page detected "+last_highlighted[0]+","+last_highlighted[1]);
+                if (last_highlighted[0] == myview.num_col-1 &&
+                        last_highlighted[1] == myview.num_row-1) {
+                    Log.d("turnpage", "onTouchEvent: x cor is "+e.getX()+","+(myview.edge + myview.cell_width*myview.num_col));
+                    if (e.getX() > (myview.edge + myview.cell_width*myview.num_col)) {
+                        turn_next_page();
+                        last_turn_page_time = System.currentTimeMillis();
+                    }
+                } else if (last_highlighted[0] == 0 &&
+                        last_highlighted[1] == 0) {
+                    if (e.getX() < myview.edge) {
+                        turn_last_page();
+                        last_turn_page_time = System.currentTimeMillis();
+                    }
+                }
             }
         } else if (action == MotionEvent.ACTION_UP) {
             Log.d(TAG, "onTouchEvent: action up");
             myview.resetHighlight();
             myview.invalidate();
+            no_lift_since_high_light = false;
         }
         listening = local_lis;
         this.gesture_detector.onTouchEvent(e);
         return super.onTouchEvent(e);
     }
 
-    public void vibrate_on_touch(float x) {
+    public void vibrate_on_touch(float x, float y) {
         int col = (int) (x - (float) myview.edge) / myview.cell_width;
-        if (Math.abs(col * myview.cell_width + myview.edge-x) <= 10) {
+        int row = (int) (y - (float) myview.edge) / myview.cell_height;
+        if (Math.abs(col * myview.cell_width + myview.edge-x) <= 10 &&
+                y > myview.edge && y < myview.getHeight()-myview.edge) {
+            Log.d(TAG, "vibrate_on_touch: supposed to vibrate");
+            vibrator.vibrate(VibrationEffect.createOneShot(30, 20));
+        }
+        if (Math.abs(row * myview.cell_height + myview.edge-y) <= 10 &&
+            x > myview.edge && x < (myview.edge+myview.cell_width*myview.num_col)) {
             Log.d(TAG, "vibrate_on_touch: supposed to vibrate");
             vibrator.vibrate(VibrationEffect.createOneShot(30, 20));
         }
@@ -255,12 +286,12 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
 
     @Override
     public boolean onSingleTapUp(MotionEvent motionEvent) {
-        Log.d(TAG, "onSingleTapUp:removed");
         return false;
     }
 
     @Override
     public boolean onScroll(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
+        Log.d(TAG, "onScroll: detected scroll");
 
         return true;
     }
@@ -270,9 +301,36 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
 
     }
 
+    public void turn_next_page() {
+        int page_count = word_text.length/(myview.num_col * myview.num_col);
+        if ((cur_page+1)*myview.num_col*myview.num_row >= word_text.length) {
+            tts.speak("已经在尾页",TextToSpeech.QUEUE_FLUSH, null, null);
+        } else {
+            cur_page += 1;
+            if (tts.isSpeaking()) {
+                tts.stop();
+            }
+            tts.speak("到第"+ (cur_page+1)+"页",TextToSpeech.QUEUE_FLUSH, null, null);
+            Log.d(TAG, "onFling: turned to page "+cur_page+" of total "+ page_count);
+        }
+    }
+
+    public void turn_last_page() {
+        if (cur_page > 0) {
+            cur_page -= 1;
+            if (tts.isSpeaking()) {
+                tts.stop();
+            }
+            tts.speak("到第"+ (cur_page+1)+"页",TextToSpeech.QUEUE_FLUSH, null, null);
+            Log.d(TAG, "onFling: turned to page "+cur_page);
+        } else {
+            tts.speak("已经在首页",TextToSpeech.QUEUE_FLUSH, null, null);
+        }
+    }
+
     @Override
     public boolean onFling(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
-        Log.d(TAG, "onFling: detected");
+        Log.d(TAG, "onFling: detected velocity is "+v);
         //code modified from https://stackoverflow.com/questions/4139288/android-how-to-handle-right-to-left-swipe-gestures
         boolean result = false;
         float diffY = motionEvent1.getY() - motionEvent.getY();
@@ -284,30 +342,11 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             float y1 = motionEvent.getY()-contentViewTop-statusBarHeight;
             float y2 = motionEvent1.getY()-contentViewTop-statusBarHeight;
             if (myview.checkTurnNextPage(x1,x2,y1,y2)) {
-                int page_count = word_text.length/(myview.num_col * myview.num_col);
-                if ((cur_page+1)*myview.num_col*myview.num_row >= word_text.length) {
-                    tts.speak("已经在尾页",TextToSpeech.QUEUE_FLUSH, null, null);
-                } else {
-                    cur_page += 1;
-                    if (tts.isSpeaking()) {
-                        tts.stop();
-                    }
-                    tts.speak("到第"+ (cur_page+1)+"页",TextToSpeech.QUEUE_FLUSH, null, null);
-                    Log.d(TAG, "onFling: turned to page "+cur_page+" of total "+ page_count);
-                }
+                turn_next_page();
                 return true;
             }
             if (myview.checkTurnLastPage(x1,x2,y1,y2)) {
-                if (cur_page > 0) {
-                    cur_page -= 1;
-                    if (tts.isSpeaking()) {
-                        tts.stop();
-                    }
-                    tts.speak("到第"+ (cur_page+1)+"页",TextToSpeech.QUEUE_FLUSH, null, null);
-                    Log.d(TAG, "onFling: turned to page "+cur_page);
-                } else {
-                    tts.speak("已经在首页",TextToSpeech.QUEUE_FLUSH, null, null);
-                }
+                turn_last_page();
                 return true;
             }
         }
