@@ -73,6 +73,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     public static int[] last_highlighted;
     public static boolean no_lift_since_high_light;
     double last_turn_page_time;
+    long[] row_last_vibrate_time;
+    long[] col_last_vibrate_time;
 
 
 
@@ -100,6 +102,11 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     public void onInit(int status) {
         // Calculate ActionBar height and StatusBar height
         myview.setDimension(8, 6);
+
+        row_last_vibrate_time = new long[myview.num_row+1];
+        col_last_vibrate_time = new long[myview.num_col+1];
+        //check if i need to initialise to zero
+
         Rect rectangle = new Rect();
         Window window = getWindow();
         window.getDecorView().getWindowVisibleDisplayFrame(rectangle);
@@ -255,15 +262,26 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     public void vibrate_on_touch(float x, float y) {
         int col = (int) (x - (float) myview.edge) / myview.cell_width;
         int row = (int) (y - (float) myview.edge) / myview.cell_height;
+        long cur_time = System.currentTimeMillis();
+        Log.d(TAG, "vibrate_on_touch: time is "+cur_time+", "+col_last_vibrate_time[col]);
+
+        //check if this 1500 gap is ok
+
         if (Math.abs(col * myview.cell_width + myview.edge-x) <= 10 &&
                 y > myview.edge && y < myview.getHeight()-myview.edge) {
-            Log.d(TAG, "vibrate_on_touch: supposed to vibrate");
-            vibrator.vibrate(VibrationEffect.createOneShot(30, 20));
+            if (cur_time - col_last_vibrate_time[col] >= 1500) {
+                Log.d(TAG, "vibrate_on_touch: supposed to vibrate on col "+col);
+                vibrator.vibrate(VibrationEffect.createOneShot(30, 20));
+                col_last_vibrate_time[col] = cur_time;
+            }
         }
         if (Math.abs(row * myview.cell_height + myview.edge-y) <= 10 &&
             x > myview.edge && x < (myview.edge+myview.cell_width*myview.num_col)) {
-            Log.d(TAG, "vibrate_on_touch: supposed to vibrate");
-            vibrator.vibrate(VibrationEffect.createOneShot(30, 20));
+            if (cur_time - col_last_vibrate_time[row] >= 1500) {
+                Log.d(TAG, "vibrate_on_touch: supposed to vibrate");
+                vibrator.vibrate(VibrationEffect.createOneShot(30, 20));
+                col_last_vibrate_time[row] = cur_time;
+            }
         }
     }
 
