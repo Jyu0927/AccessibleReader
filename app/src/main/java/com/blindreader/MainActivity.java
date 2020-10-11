@@ -57,6 +57,18 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     int word_index;
     //ViewGroup.MarginLayoutParams margin_params;
 
+    public MyGestureListener myGestureListener;
+    public GestureDetector myDetector;
+    public static boolean mTwoFingersFlingConfirmed = false;
+    public static boolean mTwoFingersFling = false;
+    public float clickDownX;
+    public float clickDownY;
+    public float timeDown;
+    public String TAGG = "Gesture";
+    public float currentTime;
+
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,6 +89,9 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             words_in_page[a] = sentence_text[a].length();
         }*/
         //margin_params = (ViewGroup.MarginLayoutParams) R.layout.activity_main.
+
+        myGestureListener = new MyGestureListener();
+        myDetector = new GestureDetector(this, myGestureListener);
     }
 
     @Override
@@ -142,202 +157,246 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     }
 
 
+//    @Override
+//    public boolean onTouchEvent(MotionEvent e) {
+//        boolean local_lis = listening;
+//        long time = System.currentTimeMillis();
+//        int action = e.getAction() & MotionEvent.ACTION_MASK;
+//        if (action == MotionEvent.ACTION_POINTER_DOWN) {
+//            //Toast.makeText(MainActivity.this, "双击", Toast.LENGTH_SHORT).show();
+//            Log.e(TAG, "onTouchEvent: listening is "+listening);
+//            Log.e(TAG, "onTouchEvent: speaking is "+tts.isSpeaking());
+//            if (listening) {
+//                tts.stop();
+//                word_count_when_stop = 0;
+//                for (int i = 0; i < cur_sentence;i++) {
+//                    word_count_when_stop += words_in_page[i];
+//                }
+//                Log.d(TAG, "onTouchEvent: word count is "+word_count_when_stop);
+//                if (word_count_when_stop == 0) {
+//                    cur_page = 0;
+//                } else {
+//                    Log.d(TAG, "onTouchEvent: reached here "+words_per_page);
+//                    cur_page = (word_count_when_stop+words_per_page)/words_per_page;
+//                    cur_page -= 1;
+//                    Log.d(TAG, "onTouchEvent: cur_page is "+cur_page);
+//                    //cur_page = roundUp(word_count_when_stop+1, words_per_page);
+//                }
+//                Log.d(TAG, "onTouchEvent: page is "+cur_page);
+//                Toast.makeText(MainActivity.this, "stopped at sentence " + cur_sentence, Toast.LENGTH_SHORT).show();
+//                local_lis = false;
+//                if (tts.isSpeaking()) {
+//                    tts.stop();
+//                }
+//                tts.speak("暂停", QUEUE_FLUSH, null, null);
+//            } else {
+//                startPlay(cur_sentence);
+//                Toast.makeText(MainActivity.this, "start at sentence " + cur_sentence, Toast.LENGTH_SHORT).show();
+//                local_lis = true;
+//            }
+//        } else if (action == MotionEvent.ACTION_DOWN | action == MotionEvent.ACTION_MOVE) {
+//            //Log.d(TAG, "onTouchEvent: single time is"+System.currentTimeMillis());
+//            if (!listening) {
+//                Log.d(TAG, "onTouchEvent: 摸读了");
+//                myview.getHighlightCell(e.getX(), e.getY()-contentViewTop-statusBarHeight, tts, word_text, cur_page, word_index);
+//                //Toast.makeText(MainActivity.this, "location at" + (e.getY()-contentViewTop-statusBarHeight), Toast.LENGTH_SHORT).show();
+//                myview.invalidate();
+//            } else {
+//                //Toast.makeText(MainActivity.this, "听读中，勿扰", Toast.LENGTH_SHORT).show();
+//            }
+//        } else if (action == MotionEvent.ACTION_UP) {
+//            Log.d(TAG, "onTouchEvent: action up");
+//            myview.resetHighlight();
+//            myview.invalidate();
+//        }
+//        listening = local_lis;
+//        this.gesture_detector.onTouchEvent(e);
+//        return super.onTouchEvent(e);
+//    }
+    public void twoFingersReset(){
+        mTwoFingersFlingConfirmed = false;
+        mTwoFingersFling = false;
+    }
+
     @Override
-    public boolean onTouchEvent(MotionEvent e) {
-        boolean local_lis = listening;
-        long time = System.currentTimeMillis();
-        int action = e.getAction() & MotionEvent.ACTION_MASK;
-        if (action == MotionEvent.ACTION_POINTER_DOWN) {
-            //Toast.makeText(MainActivity.this, "双击", Toast.LENGTH_SHORT).show();
-            Log.e(TAG, "onTouchEvent: listening is "+listening);
-            Log.e(TAG, "onTouchEvent: speaking is "+tts.isSpeaking());
-            if (listening) {
-                tts.stop();
-                word_count_when_stop = 0;
-                for (int i = 0; i < cur_sentence;i++) {
-                    word_count_when_stop += words_in_page[i];
+    public boolean onTouchEvent(MotionEvent event){
+        switch(event.getAction() & MotionEvent.ACTION_MASK){
+            case MotionEvent.ACTION_DOWN:
+                mTwoFingersFling = false;
+                mTwoFingersFlingConfirmed = false;
+                clickDownX = event.getRawX();
+                clickDownY = event.getRawY();
+                timeDown = System.currentTimeMillis();
+                Toast.makeText(MainActivity.this, "down", Toast.LENGTH_SHORT).show();
+                break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                mTwoFingersFling = true;
+                break;
+            case MotionEvent.ACTION_MOVE:
+
+                if(mTwoFingersFling && Math.hypot(event.getRawX() - clickDownX, event.getRawY() - clickDownY) > 10){
+                    mTwoFingersFlingConfirmed = true;
+                    return myDetector.onTouchEvent(event);
                 }
-                Log.d(TAG, "onTouchEvent: word count is "+word_count_when_stop);
-                if (word_count_when_stop == 0) {
-                    cur_page = 0;
-                } else {
-                    Log.d(TAG, "onTouchEvent: reached here "+words_per_page);
-                    cur_page = (word_count_when_stop+words_per_page)/words_per_page;
-                    cur_page -= 1;
-                    Log.d(TAG, "onTouchEvent: cur_page is "+cur_page);
-                    //cur_page = roundUp(word_count_when_stop+1, words_per_page);
+                break;
+            case MotionEvent.ACTION_POINTER_UP:
+
+                if (mTwoFingersFling && Math.hypot(event.getRawX() - clickDownX, event.getRawY() - clickDownY) < 10){
+                    Log.d(TAGG, "TWO FINGERS SINGLE_CLICK !");
                 }
-                Log.d(TAG, "onTouchEvent: page is "+cur_page);
-                Toast.makeText(MainActivity.this, "stopped at sentence " + cur_sentence, Toast.LENGTH_SHORT).show();
-                local_lis = false;
-                if (tts.isSpeaking()) {
-                    tts.stop();
-                }
-                tts.speak("暂停", QUEUE_FLUSH, null, null);
-            } else {
-                startPlay(cur_sentence);
-                Toast.makeText(MainActivity.this, "start at sentence " + cur_sentence, Toast.LENGTH_SHORT).show();
-                local_lis = true;
-            }
-        } else if (action == MotionEvent.ACTION_DOWN | action == MotionEvent.ACTION_MOVE) {
-            //Log.d(TAG, "onTouchEvent: single time is"+System.currentTimeMillis());
-            if (!listening) {
-                Log.d(TAG, "onTouchEvent: 摸读了");
-                myview.getHighlightCell(e.getX(), e.getY()-contentViewTop-statusBarHeight, tts, word_text, cur_page, word_index);
-                //Toast.makeText(MainActivity.this, "location at" + (e.getY()-contentViewTop-statusBarHeight), Toast.LENGTH_SHORT).show();
-                myview.invalidate();
-            } else {
-                //Toast.makeText(MainActivity.this, "听读中，勿扰", Toast.LENGTH_SHORT).show();
-            }
-        } else if (action == MotionEvent.ACTION_UP) {
-            Log.d(TAG, "onTouchEvent: action up");
-            myview.resetHighlight();
-            myview.invalidate();
+                break;
+            case MotionEvent.ACTION_UP:
+                break;
         }
-        listening = local_lis;
-        this.gesture_detector.onTouchEvent(e);
-        return super.onTouchEvent(e);
+        return myDetector.onTouchEvent(event);
+
     }
 
     public static int roundUp(int num, int divisor) {
         return (num + divisor - 1) / divisor;
     }
 
-    @Override
-    public boolean onDown(MotionEvent motionEvent) {
-        Log.d(TAG, "onDown: single tap seperate");
-        float x = motionEvent.getX();
-        float y = motionEvent.getY();
-        return true;
-    }
 
-    @Override
-    public void onShowPress(MotionEvent motionEvent) {
 
-    }
-
-    @Override
-    public boolean onSingleTapUp(MotionEvent motionEvent) {
-        Log.d(TAG, "onSingleTapUp:removed");
-        return false;
-    }
-
-    @Override
-    public boolean onScroll(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
-
-        return true;
-    }
-
-    @Override
-    public void onLongPress(MotionEvent motionEvent) {
-
-    }
-
-    @Override
-    public boolean onFling(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
-        Log.d(TAG, "onFling: detected");
-        //code modified from https://stackoverflow.com/questions/4139288/android-how-to-handle-right-to-left-swipe-gestures
-        boolean result = false;
-        float diffY = motionEvent1.getY() - motionEvent.getY();
-        float diffX = motionEvent1.getX() - motionEvent.getX();
-        Log.d(TAG, "onFling: listening status is"+listening);
-        if (!listening) {
-            float x1 = motionEvent.getX();
-            float x2 = motionEvent1.getX();
-            float y1 = motionEvent.getY()-contentViewTop-statusBarHeight;
-            float y2 = motionEvent1.getY()-contentViewTop-statusBarHeight;
-            if (myview.checkTurnNextPage(x1,x2,y1,y2)) {
-                int page_count = word_text.length/(myview.num_col * myview.num_col);
-                if ((cur_page+1)*myview.num_col*myview.num_row >= word_text.length) {
-                    tts.speak("已经在尾页",TextToSpeech.QUEUE_FLUSH, null, null);
-                } else {
-                    cur_page += 1;
-                    if (tts.isSpeaking()) {
-                        tts.stop();
-                    }
-                    tts.speak("下一页",TextToSpeech.QUEUE_FLUSH, null, null);
-                    Log.d(TAG, "onFling: turned to page "+cur_page+" of total "+ page_count);
-                }
-                return true;
-            }
-            if (myview.checkTurnLastPage(x1,x2,y1,y2)) {
-                if (cur_page > 0) {
-                    cur_page -= 1;
-                    if (tts.isSpeaking()) {
-                        tts.stop();
-                    }
-                    tts.speak("上一页",TextToSpeech.QUEUE_FLUSH, null, null);
-                    Log.d(TAG, "onFling: turned to page "+cur_page);
-                } else {
-                    tts.speak("已经在首页",TextToSpeech.QUEUE_FLUSH, null, null);
-                }
-                return true;
-            }
+        @Override
+        public boolean onDown(MotionEvent motionEvent) {
+            Log.d(TAG, "onDown: single tap seperate");
+            float x = motionEvent.getX();
+            float y = motionEvent.getY();
+            return true;
         }
-        if (Math.abs(diffX) > Math.abs(diffY)) {
-            if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(v) > SWIPE_VELOCITY_THRESHOLD) {
-                if (diffX > 0) {
-                    onSwipeRight();
+
+        @Override
+        public void onShowPress(MotionEvent motionEvent) {
+
+        }
+
+        @Override
+        public boolean onSingleTapUp(MotionEvent motionEvent) {
+            Log.d(TAG, "onSingleTapUp:removed");
+            return false;
+        }
+
+        @Override
+        public boolean onScroll(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
+
+            return true;
+        }
+
+        @Override
+        public void onLongPress(MotionEvent motionEvent) {
+            Log.d(TAG, "changanshoushi");
+            Toast.makeText(MainActivity.this, "last sentence", Toast.LENGTH_SHORT).show();
+
+        }
+
+        @Override
+        public boolean onFling(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
+            Log.d(TAG, "onFling: detected");
+            //code modified from https://stackoverflow.com/questions/4139288/android-how-to-handle-right-to-left-swipe-gestures
+            boolean result = false;
+            float diffY = motionEvent1.getY() - motionEvent.getY();
+            float diffX = motionEvent1.getX() - motionEvent.getX();
+            Log.d(TAG, "onFling: listening status is" + listening);
+            if (!listening) {
+                float x1 = motionEvent.getX();
+                float x2 = motionEvent1.getX();
+                float y1 = motionEvent.getY() - contentViewTop - statusBarHeight;
+                float y2 = motionEvent1.getY() - contentViewTop - statusBarHeight;
+                if (myview.checkTurnNextPage(x1, x2, y1, y2)) {
+                    int page_count = word_text.length / (myview.num_col * myview.num_col);
+                    if ((cur_page + 1) * myview.num_col * myview.num_row >= word_text.length) {
+                        tts.speak("已经在尾页", TextToSpeech.QUEUE_FLUSH, null, null);
+                    } else {
+                        cur_page += 1;
+                        if (tts.isSpeaking()) {
+                            tts.stop();
+                        }
+                        tts.speak("下一页", TextToSpeech.QUEUE_FLUSH, null, null);
+                        Log.d(TAG, "onFling: turned to page " + cur_page + " of total " + page_count);
+                    }
+                    return true;
+                }
+                if (myview.checkTurnLastPage(x1, x2, y1, y2)) {
+                    if (cur_page > 0) {
+                        cur_page -= 1;
+                        if (tts.isSpeaking()) {
+                            tts.stop();
+                        }
+                        tts.speak("上一页", TextToSpeech.QUEUE_FLUSH, null, null);
+                        Log.d(TAG, "onFling: turned to page " + cur_page);
+                    } else {
+                        tts.speak("已经在首页", TextToSpeech.QUEUE_FLUSH, null, null);
+                    }
+                    return true;
+                }
+            }
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(v) > SWIPE_VELOCITY_THRESHOLD) {
+                    if (diffX > 0) {
+                        onSwipeRight();
+                    } else {
+                        onSwipeLeft();
+                    }
+                    result = true;
+                }
+            } else if (Math.abs(diffY) > SWIPE_THRESHOLD && Math.abs(v1) > SWIPE_VELOCITY_THRESHOLD) {
+                if (diffY > 0) {
+                    onSwipeDown();
                 } else {
-                    onSwipeLeft();
+                    onSwipeUp();
                 }
                 result = true;
             }
-        } else if (Math.abs(diffY) > SWIPE_THRESHOLD && Math.abs(v1) > SWIPE_VELOCITY_THRESHOLD) {
-            if (diffY > 0) {
-                onSwipeDown();
+            return result;
+        }
+
+        private void onSwipeLeft() {
+            if (listening) {
+                tts.stop();
+                if (cur_sentence > 0) {
+                    cur_sentence -= 1;
+                }
+                startPlay(cur_sentence);
             } else {
-                onSwipeUp();
+                if (tts.isSpeaking()) {
+                    tts.stop();
+                }
+                if (cur_sentence > 0) {
+                    cur_sentence -= 1;
+                }
             }
-            result = true;
+            Toast.makeText(MainActivity.this, "last sentence", Toast.LENGTH_SHORT).show();
         }
-        return result;
-    }
 
-    private void onSwipeLeft() {
-        if (listening) {
-            tts.stop();
-            if (cur_sentence > 0) {
-                cur_sentence -= 1;
-            }
-            startPlay(cur_sentence);
-        } else {
-            if (tts.isSpeaking()) {
+        private void onSwipeRight() {
+            Log.d(TAG, "onSwipeRight: listening status" + listening);
+            Log.d(TAG, "onSwipeRight: speaking status" + tts.isSpeaking());
+            if (listening) {
                 tts.stop();
+                if (cur_sentence < (text.sentence_text.length - 1)) {
+                    cur_sentence += 1;
+                }
+                startPlay(cur_sentence);
+            } else {
+                if (tts.isSpeaking()) {
+                    tts.stop();
+                }
+                Log.d(TAG, "onSwipeRight: not speaking");
+                if (cur_sentence < (text.sentence_text.length - 1)) {
+                    cur_sentence += 1;
+                }
             }
-            if (cur_sentence > 0) {
-                cur_sentence -= 1;
-            }
+            Toast.makeText(MainActivity.this, "next sentence", Toast.LENGTH_SHORT).show();
         }
-        Toast.makeText(MainActivity.this, "last sentence", Toast.LENGTH_SHORT).show();
-    }
 
-    private void onSwipeRight() {
-        Log.d(TAG, "onSwipeRight: listening status"+listening);
-        Log.d(TAG, "onSwipeRight: speaking status"+tts.isSpeaking());
-        if (listening) {
-            tts.stop();
-            if (cur_sentence < (text.sentence_text.length-1)) {
-                cur_sentence += 1;
-            }
-            startPlay(cur_sentence);
-        } else {
-            if (tts.isSpeaking()) {
-                tts.stop();
-            }
-            Log.d(TAG, "onSwipeRight: not speaking");
-            if (cur_sentence < (text.sentence_text.length -1)) {
-                cur_sentence += 1;
-            }
+        private void onSwipeUp() {
+            Toast.makeText(MainActivity.this, "swiped up", Toast.LENGTH_SHORT).show();
         }
-        Toast.makeText(MainActivity.this, "next sentence", Toast.LENGTH_SHORT).show();
-    }
 
-    private void onSwipeUp() {
-        Toast.makeText(MainActivity.this, "swiped up", Toast.LENGTH_SHORT).show();
-    }
+        private void onSwipeDown() {
+            Toast.makeText(MainActivity.this, "swiped down", Toast.LENGTH_SHORT).show();
+        }
 
-    private void onSwipeDown() {
-        Toast.makeText(MainActivity.this, "swiped down", Toast.LENGTH_SHORT).show();
-    }
+
 }
