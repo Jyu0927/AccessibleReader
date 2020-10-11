@@ -51,6 +51,7 @@ public class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
     public void onLongPress(MotionEvent motionEvent) {
         Log.d(TAG, "onLongPress");
         Log.d(TAG, "onLongPress");
+        Log.d(TAG, "onLongPress");
 //      Toast.makeText(MainActivity.this, "last sentence", Toast.LENGTH_SHORT).show();
     }
 
