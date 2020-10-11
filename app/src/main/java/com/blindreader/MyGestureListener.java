@@ -58,7 +58,6 @@ public class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
         Log.d(TAG, " onSingleTapConfirmed");
         return true;
     }
-
     @Override
     public boolean onDoubleTap(MotionEvent event){
         Log.d(TAG, " onDoubleTap");
