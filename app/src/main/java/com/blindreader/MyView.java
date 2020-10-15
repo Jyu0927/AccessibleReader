@@ -7,19 +7,22 @@ import android.graphics.Paint;
 import android.speech.tts.TextToSpeech;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.core.view.GestureDetectorCompat;
 
-public class MyView extends View{
+public class MyView extends View {
     private static final String TAG = "order";
     public int num_row, num_col;
     public int cell_height, cell_width;
     private Paint blackLine = new Paint();
     private Paint fill = new Paint();
     public int edge = 100;
+    public Text text = new Text();
     int[] highlighted = {-1,-1};
     //highlighted = {col, row};
 
@@ -87,7 +90,6 @@ public class MyView extends View{
     }
 
     public void getHighlightCell(float x, float y, TextToSpeech tts, String[] text, int page, int last_word, double[] lastTime) {
-        //Log.d(TAG, "getHighlightCell: cors are"+x+","+y);
         if (x > edge & x < (edge+cell_width*num_col) & y > edge & y < getHeight()-edge) {
             int row = (int) (y - (float) edge) / cell_height;
             int col = (int) (x - (float) edge) / cell_width;
@@ -97,6 +99,9 @@ public class MyView extends View{
             MainActivity.last_highlighted[1] = row;
             MainActivity.no_lift_since_high_light = true;
             int word_index = page * num_row * num_col + row * num_col + col;
+            //Log.d("checking","the index is" + word_index);
+            MainActivity.cur_sentence = MainActivity.which_sentence(word_index);
+            //Log.d("checking","current sentence is" + MainActivity.cur_sentence);
             if (word_index >= new Text().word_text.length) {
                 if (!tts.isSpeaking()) {
                     tts.speak("读完了", TextToSpeech.QUEUE_FLUSH, null, null);
@@ -115,6 +120,7 @@ public class MyView extends View{
                 tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
             }
             lastTime[word_index] = cur_time;
+            //Log.d(TAG, "getHighlightCell: cors are"+row+","+col);
             //tts.stop();
             //you may want to change the utteranceid to word_index
         } else {
@@ -169,8 +175,6 @@ public class MyView extends View{
         }
         super.onDraw(canvas);
     }
-
-
 
 }
 
