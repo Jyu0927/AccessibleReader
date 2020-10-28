@@ -17,11 +17,11 @@ import androidx.core.view.GestureDetectorCompat;
 
 public class MyView extends View {
     private static final String TAG = "order";
-    public int num_row, num_col;
+    public static int num_row, num_col;
     public int cell_height, cell_width;
     private Paint blackLine = new Paint();
     private Paint fill = new Paint();
-    public int edge = 100;
+    public int edge = 150;
     public Text text = new Text();
     int[] highlighted = {-1,-1};
     //highlighted = {col, row};
@@ -102,14 +102,14 @@ public class MyView extends View {
             //Log.d("checking","the index is" + word_index);
             MainActivity.cur_sentence = MainActivity.which_sentence(word_index);
             //Log.d("checking","current sentence is" + MainActivity.cur_sentence);
-            if (word_index >= new Text().word_text.length) {
+            if (word_index >= MainActivity.word_text.length) {
                 if (!tts.isSpeaking()) {
                     tts.speak("读完了", TextToSpeech.QUEUE_FLUSH, null, null);
                 }
                 return;
             }
             double cur_time = System.currentTimeMillis();
-            if (cur_time - lastTime[word_index] < 2000) {
+            if (cur_time - lastTime[word_index] < 850) {
                 return;
             }
             if (!tts.isSpeaking()) {
@@ -125,7 +125,7 @@ public class MyView extends View {
             //you may want to change the utteranceid to word_index
         } else {
             double cur_time2 = System.currentTimeMillis();
-            if (cur_time2 - lastTime[lastTime.length-1] < 1500) {
+            if (cur_time2 - lastTime[lastTime.length-1] < 850) {
                 return;
             }
             if (tts.isSpeaking()) {
@@ -134,6 +134,8 @@ public class MyView extends View {
             if (x < edge && y > edge && y < getHeight()-edge) {
                 int row = (int) (y - (float) edge) / cell_height;
                 tts.speak("第"+(row+1)+"航", TextToSpeech.QUEUE_FLUSH, null, "no_content");
+            } else if (x > (edge+cell_width*num_col)) {
+                tts.speak("进度条区域", TextToSpeech.QUEUE_FLUSH, null, "no_content");
             } else {
                 tts.speak("无内容区域", TextToSpeech.QUEUE_FLUSH, null, "no_content");
             }
