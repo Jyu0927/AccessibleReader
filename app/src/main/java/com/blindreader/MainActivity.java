@@ -9,6 +9,7 @@ import android.graphics.Rect;
 import android.media.AudioAttributes;
 import android.media.SoundPool;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.speech.tts.TextToSpeech;
@@ -20,10 +21,19 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
+import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 import static android.speech.tts.TextToSpeech.*;
 
@@ -73,10 +83,13 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     public float first_x;
     public float first_y;
     public double first_time;
+    public double last_time;
+    public float last_x, last_y;
     //public float timeDown;
     public String TAGG = "Gesture";
     public static int page_count;
     public static boolean progress_bar_pressed;
+    public static boolean progress_cancel;
     public static float progress_bar_basecor;
     public static float[] progress_bar_height;
     public static int progress_cur_page;
@@ -84,7 +97,10 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     public static int chapter;
     public static int section;
     int total_page_in_book;
+    public String file_name;
 
+    //for counting things unrelated to the APP itself
+    public static Map <String, Integer> dictionary;
 
 
     @Override
@@ -97,10 +113,21 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         tts.setPitch(0.9f);
         text = new Text();
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        cur_sentence = 0;
+        cur_page = 0;
+        word_count_when_stop = 0;
+        sentence_finished = -1;
+        word_index = -1;
+        last_highlighted = new int[2];
+        last_highlighted[0] = -1;
+        last_highlighted[1] = -1;
     }
 
     @Override
     public void onInit(int status) {
+        //writeFile(myview);
+        Instant instant = Instant.now();
+        myview.invalidate();
         Bundle extras = getIntent().getExtras();
         if (extras == null) {
             chapter = 0;
@@ -109,6 +136,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             chapter = extras.getInt("CHAPTER_ID");
             section = extras.getInt("SECTION_ID");
         }
+        file_name = instant +"_"+chapter+"_"+section+".txt";
+        Log.d("filenamechanged",file_name);
         textContent = text.rawtext[chapter][section];
         if (textContent.equals("")) {
             sentence_text = new String[] {};
@@ -152,12 +181,12 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         //int titleBarHeight= contentViewTop - statusBarHeight;
         TypedValue tv = new TypedValue();
 
-        cur_sentence = 0;
+        /*cur_sentence = 0;
         cur_page = 0;
         word_count_when_stop = 0;
         sentence_finished = -1;
+        word_index = -1;*/
         listening = false;
-        word_index = -1;
         words_per_page = myview.num_col * myview.num_row;
         AudioAttributes attributes = new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_GAME)
@@ -169,20 +198,24 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         clickSound = sounds.load(this, R.raw.click, 1);
         page_flip_sound = sounds.load(this, R.raw.page_flip,1);
         stop_lastTime = 0;
-        last_highlighted = new int[2];
+        /*last_highlighted = new int[2];
         last_highlighted[0] = -1;
-        last_highlighted[1] = -1;
+        last_highlighted[1] = -1;*/
         no_lift_since_high_light = false;
         swiping = false;
         page_count = ((word_text.length-1)/ (myview.num_row * myview.num_col)) +1;
         progress_bar_pressed = false;
+        progress_cancel = false;
         progress_bar_basecor = 0;
         progress_bar_height[0] = 0;
         progress_bar_height[1] = 0;
         progress_cur_page = 0;
         progress_speak_time = 0;
+        last_time = 0;
         book_num_page = text.num_page();
         total_page_in_book = 0;
+        last_x = 0;
+        last_y = 0;
         Log.d("crashcheck", String.valueOf(book_num_page));
         for (int i = 0; i < text.rawtext.length; i++) {
             for (int j = 0; j < text.num_words_in_sentence[i].length; j++) {
@@ -191,6 +224,27 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             }
         }
         Log.d("crashcheck", "reached here1");
+
+        dictionary = new HashMap<String, Integer>();
+        dictionary.put("stop", 0);
+        dictionary.put("start", 0);
+        dictionary.put("last_sen_l", 0);
+        dictionary.put("last_sen_t", 0);
+        dictionary.put("next_sen_l", 0);
+        dictionary.put("next_sen_t", 0);
+        dictionary.put("last_page_l", 0);
+        dictionary.put("last_page_t", 0);
+        dictionary.put("next_page_l", 0);
+        dictionary.put("next_page_t", 0);
+        dictionary.put("back_sen_l", 0);
+        dictionary.put("back_sen_t", 0);
+        dictionary.put("back_page_l", 0);
+        dictionary.put("progress_bar", 0);
+        dictionary.put("cancel_bar", 0);
+        dictionary.put("chap_status_l", 0);
+        dictionary.put("chap_status_t", 0);
+        dictionary.put("book_status_l", 0);
+        dictionary.put("book_status_t", 0);
 
 
         if (status == SUCCESS) {
@@ -206,6 +260,9 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                         if (parts[0].equals("word")) {
                             word_index = Integer.parseInt(parts[1]);
                             return;
+                        }
+                        if (parts[0].equals("single")) {
+                            cur_page = sen_start_on_page[cur_sentence];
                         }
                     }
                     last_highlighted[0] = -1;
@@ -243,6 +300,11 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     }
 
     private void switchActivities() {
+        generateNoteOnSD(file_name, "results");
+        Set<String> keys = dictionary.keySet();
+        for (String key: keys) {
+            generateNoteOnSD(file_name, key +":"+dictionary.get(key));
+        }
         Intent switchActivityIntent = new Intent(this, MenuActivity.class);
         startActivity(switchActivityIntent);
     }
@@ -258,6 +320,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             if (c == cur_num) {
                 if (word_index == -1) {
                     tts.speak(sentence_text[c], QUEUE_FLUSH, null, String.valueOf(c));
+                    tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
                 } else {
                     String[] parts = Arrays.copyOfRange(word_text_original, word_index, cumulative_words_count[cur_num]);
                     //String[] parts = sentence_text[c].split(word);
@@ -266,6 +329,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 }
             } else {
                 tts.speak(sentence_text[c], QUEUE_ADD, null, String.valueOf(c));
+                tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
             }
         }
     }
@@ -282,15 +346,23 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         } else if (action == MotionEvent.ACTION_DOWN) {
             Log.d("gesture", "this is single tap");
             two_fingers = false;
+            progress_cancel = false;
             first_x = e.getX();
             first_y = e.getY();
             first_time = System.currentTimeMillis();
+            last_x = first_x;
+            last_y = first_y;
         } else if (action == MotionEvent.ACTION_MOVE) {
             double time_diff = System.currentTimeMillis() - first_time;
-            float distance = e.getX() - first_x;
-            float y_distance = e.getY() - first_y;
-            double velocity = distance / time_diff;
-            double y_velocity = y_distance / time_diff;
+            double last_time_diff = System.currentTimeMillis() - last_time;
+
+            //record last x and get the velocity
+            
+            float distance = e.getX() - last_x;
+            //float y_distance = e.getY() - first_y;
+            double velocity = distance / last_time_diff;
+            //double y_velocity = y_distance / time_diff;
+            double y_distance = e.getY() - last_y;
             //Log.d("debugging", "time difference is "+time_diff);
             //Log.d("debugging", "swiping is " + swiping);
             //Log.d("debugging", "swiping is " + two_fingers);
@@ -300,23 +372,28 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 //two_fingers = false;
                 //return myDetector.onTouchEvent(event);
             } else if (time_diff > 200 && !swiping && !two_fingers && (System.currentTimeMillis() - stop_lastTime > 300)) {
-                Toast.makeText(MainActivity.this, "dragging", Toast.LENGTH_SHORT).show();
+                //Toast.makeText(MainActivity.this, "dragging", Toast.LENGTH_SHORT).show();
                 Log.d("debugging", "truth is  "+(listening));
                 if (!progress_bar_pressed && !listening) {
                     vibrate_on_touch(e.getX(), e.getY()-contentViewTop-statusBarHeight);
                 }
                 if (!progress_bar_pressed && !listening && (e.getX() < (myview.edge+myview.cell_width*myview.num_col))) {
+                    // add velocity > -0.7 && y_distance>=0 if want to control nextline don't read the middle part
+                    Log.d("checkvelocity", "velocity is " + y_distance);
                     touch_read_cell(e);
-                } else if (first_x >= (myview.edge+myview.cell_width*myview.num_col)) {
+                } else if (first_x >= (10+myview.edge+myview.cell_width*myview.num_col)) {
                     progress_bar(e.getY());
                 }
                 //avoid touch cell when flinging (swiping)
                 //move to touch read is much slower -> velocity
                 //time_diff controlled otherwise swipe triggers touch read (when starts to swipe velocity low)
             }
+            last_time = System.currentTimeMillis();
+            last_x = e.getX();
+            last_y = e.getY();
         } else if (action == MotionEvent.ACTION_POINTER_UP) {
             if (two_fingers && (Math.hypot(e.getX() - first_x, e.getY() - first_y) < 100)){
-                Toast.makeText(MainActivity.this, "two finger single click", Toast.LENGTH_SHORT).show();
+                //Toast.makeText(MainActivity.this, "two finger single click", Toast.LENGTH_SHORT).show();
                 Log.d("gesture", "TWO FINGERS SINGLE_CLICK !");
                 Log.d("progressbar", "listening status is "+ listening);
                 if (listening) {
@@ -328,26 +405,41 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 two_fingers = false;
             }
         } else if (action == MotionEvent.ACTION_UP) {
-            //touch_release_cell();
+            last_time = 0;
+            last_x = 0;
+            last_y = 0;
             swiping = false;
+            if (last_highlighted[0] != -1) {
+                int word_index = cur_page * myview.num_row * myview.num_col + last_highlighted[1] * myview.num_col + last_highlighted[0];
+                if (word_index < word_text.length) {
+                    word_last_touched_time[word_index] = 0;
+                }
+            }
             if (progress_bar_pressed) {
                 progress_bar_pressed = false;
                 //local_lis = true;
                 if (e.getX() > (myview.edge+myview.cell_width*myview.num_col)) {
+                    generateNoteOnSD(file_name, "progress_bar " + System.currentTimeMillis());
+                    dictionary.put("progress_bar", dictionary.get("progress_bar")+1);
                     cur_page = progress_cur_page;
                     if (cur_page > page_count - 1) {
                         cur_page = page_count - 1;
                     }
                 } else {
+                    progress_cancel = true;
+                    generateNoteOnSD(file_name, "cancel_bar " + System.currentTimeMillis());
+                    dictionary.put("cancel_bar", dictionary.get("cancel_bar")+1);
                     tts.speak("，回到第"+(cur_page+1)+"页", QUEUE_FLUSH, null, null);
                 }
                     //retract the action on progress bar, go back to current page
                     progress_to_page(cur_page);
+                    myview.invalidate();
                 Log.d("progressbar","to page "+ cur_page);
             }
         }
         listening = local_lis;
         this.gesture_detector.onTouchEvent(e);
+        myview.invalidate();
         return super.onTouchEvent(e);
     }
 
@@ -375,6 +467,13 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             tts.stop();
         }
         cur_sentence -= 1;
+        if (listening) {
+            generateNoteOnSD(file_name, "back_sen_l " + System.currentTimeMillis());
+            dictionary.put("back_sen_l", dictionary.get("back_sen_l")+1);
+        } else {
+            generateNoteOnSD(file_name, "back_sen_t " + System.currentTimeMillis());
+            dictionary.put("back_sen_t", dictionary.get("back_sen_t")+1);
+        }
         next_sentence();
         //tts.speak(sentence_text[cur_sentence], QUEUE_FLUSH, null, String.valueOf(cur_sentence));
     }
@@ -384,13 +483,15 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         tts.stop();
         cur_page = sen_start_on_page[cur_sentence];
         Log.d(TAG, "onTouchEvent: page is "+sen_start_on_page[cur_sentence]);
-        Toast.makeText(MainActivity.this, "stopped at sentence " + (cur_sentence), Toast.LENGTH_SHORT).show();
+        //Toast.makeText(MainActivity.this, "stopped at sentence " + (cur_sentence), Toast.LENGTH_SHORT).show();
         //local_lis = false;
         //listening = false;
         if (tts.isSpeaking()) {
             tts.stop();
         }
         sounds.play(clickSound, 1, 1, 0, 0, 1);
+        generateNoteOnSD(file_name, "stop " + System.currentTimeMillis());
+        dictionary.put("stop", dictionary.get("stop")+1);
         return false;
     }
 
@@ -403,7 +504,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             } else {
                 startPlay(cur_sentence, -1);
             }
-            Toast.makeText(MainActivity.this, "start at sentence " + (cur_sentence), Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "start at sentence " + (cur_sentence), Toast.LENGTH_SHORT).show();
         } else {
             int index = cur_page * myview.num_col * myview.num_row + last_highlighted[1] * myview.num_col + last_highlighted[0];
             int sen = which_sentence(index);
@@ -414,6 +515,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             }
             startPlay(sen, index);
         }
+        generateNoteOnSD(file_name, "start " + System.currentTimeMillis());
+        dictionary.put("start", dictionary.get("start")+1);
         return true;
     }
 
@@ -530,7 +633,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
 
     @Override
     public boolean onSingleTapUp(MotionEvent motionEvent) {
-        Toast.makeText(MainActivity.this, "one finger single click", Toast.LENGTH_SHORT).show();
+        //Toast.makeText(MainActivity.this, "one finger single click", Toast.LENGTH_SHORT).show();
         if (!listening && (System.currentTimeMillis() - stop_lastTime > 300)) {
             vibrate_on_touch(motionEvent.getX(), motionEvent.getY()-contentViewTop-statusBarHeight);
             touch_read_cell(motionEvent);
@@ -577,6 +680,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             i++;
         }
         cur_sentence = sen;
+        generateNoteOnSD(file_name, "next_page_t " + System.currentTimeMillis());
+        dictionary.put("next_page_t", dictionary.get("next_page_t")+1);
     }
 
     public void turn_last_page() {
@@ -604,6 +709,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             i++;
         }
         cur_sentence = sen;
+        generateNoteOnSD(file_name, "last_page_t " + System.currentTimeMillis());
+        dictionary.put("last_page_t", dictionary.get("last_page_t")+1);
     }
 
     public void listen_turn_next_page() {
@@ -627,6 +734,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             }
             i++;
         }
+        generateNoteOnSD(file_name, "next_page_l " + System.currentTimeMillis());
+        dictionary.put("next_page_l", dictionary.get("next_page_l")+1);
         startPlay(sen, -1);
     }
 
@@ -650,6 +759,8 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             }
             i++;
         }
+        generateNoteOnSD(file_name, "last_page_l " + System.currentTimeMillis());
+        dictionary.put("last_page_l", dictionary.get("last_page_l")+1);
         startPlay(sen, -1);
     }
 
@@ -668,15 +779,19 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 swiping = true;
                 if (diffX > 0) {
                     if (motionEvent.getX() < 15) {
-                        Toast.makeText(MainActivity.this, "swipe right from left edge", Toast.LENGTH_SHORT).show();
+                        //Toast.makeText(MainActivity.this, "swipe right from left edge", Toast.LENGTH_SHORT).show();
                         tts.stop();
                         tts.speak("打开目录", QUEUE_FLUSH, null, null);
+                        listening = false;
                         switchActivities();
                     } else {
+                        Log.d("timediffis", String.valueOf(System.currentTimeMillis()-first_time));
                         onSwipeRight();
                     }
                 } else {
-                    onSwipeLeft();
+                    if (!progress_cancel) {
+                        onSwipeLeft();
+                    }
                 }
                 result = true;
             }
@@ -707,27 +822,31 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         tts.speak(sentence_text[cur_sentence], QUEUE_FLUSH, null, "single-"+String.valueOf(cur_sentence));
         if (!listening) {
             listening = true;
+            generateNoteOnSD(file_name, "last_sen_t " + System.currentTimeMillis());
+            dictionary.put("last_sen_t", dictionary.get("last_sen_t")+1);
+        } else {
+            generateNoteOnSD(file_name, "last_sen_l " + System.currentTimeMillis());
+            dictionary.put("last_sen_l", dictionary.get("last_sen_l")+1);
         }
 
-        Toast.makeText(MainActivity.this, "last sentence", Toast.LENGTH_SHORT).show();
+        //Toast.makeText(MainActivity.this, "last sentence", Toast.LENGTH_SHORT).show();
     }
 
     private void onSwipeLeft() {
         if (two_fingers) {
-            Toast.makeText(MainActivity.this, "two finger swipe left", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "two finger swipe left", Toast.LENGTH_SHORT).show();
             if (listening) {
-                listen_turn_last_page();
+                listen_turn_next_page();
             } else {
-                turn_last_page();
+                turn_next_page();
             }
         } else {
-            Toast.makeText(MainActivity.this, "one finger swipe left", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "one finger swipe left", Toast.LENGTH_SHORT).show();
             last_sentence();
         }
     }
 
     private void next_sentence() {
-        //摸读后的next sentence怎么算
         tts.stop();
         if (cur_sentence < (sentence_text.length-1)) {
             cur_sentence += 1;
@@ -741,19 +860,26 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         if (!listening) {
             listening = true;
         }
-        Toast.makeText(MainActivity.this, "next sentence", Toast.LENGTH_SHORT).show();
+        //Toast.makeText(MainActivity.this, "next sentence", Toast.LENGTH_SHORT).show();
     }
 
     private void onSwipeRight() {
         if (two_fingers) {
-            Toast.makeText(MainActivity.this, "two finger swipe right", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "two finger swipe right", Toast.LENGTH_SHORT).show();
             if (listening) {
-                listen_turn_next_page();
+                listen_turn_last_page();
             } else {
-                turn_next_page();
+                turn_last_page();
             }
         } else {
-            Toast.makeText(MainActivity.this, "one finger swipe right", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "one finger swipe right", Toast.LENGTH_SHORT).show();
+            if (!listening) {
+                generateNoteOnSD(file_name, "next_sen_t " + System.currentTimeMillis());
+                dictionary.put("next_sen_t", dictionary.get("next_sen_t")+1);
+            } else {
+                generateNoteOnSD(file_name, "next_sen_l " + System.currentTimeMillis());
+                dictionary.put("next_sen_l", dictionary.get("next_sen_l")+1);
+            }
             next_sentence();
         }
     }
@@ -765,6 +891,11 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         //int page_count = (word_text.length-1)/(myview.num_col * myview.num_col);
         if (listening) {
             cur_page = sen_start_on_page[cur_sentence];
+            generateNoteOnSD(file_name, "chap_status_l " + System.currentTimeMillis());
+            dictionary.put("chap_status_l", dictionary.get("chap_status_l")+1);
+        } else {
+            generateNoteOnSD(file_name, "chap_status_t " + System.currentTimeMillis());
+            dictionary.put("chap_status_t", dictionary.get("chap_status_t")+1);
         }
         tts.speak("当前第"+(cur_page+1)+"页，一共"+page_count+"页", QUEUE_FLUSH, null, null);
         listening = false;
@@ -776,6 +907,11 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         }
         if (listening) {
             cur_page = sen_start_on_page[cur_sentence];
+            generateNoteOnSD(file_name, "book_status_l " + System.currentTimeMillis());
+            dictionary.put("book_status_l", dictionary.get("book_status_l")+1);
+        } else {
+            generateNoteOnSD(file_name, "book_status_t " + System.currentTimeMillis());
+            dictionary.put("book_status_t", dictionary.get("book_status_t")+1);
         }
         int pre_count = 0;
         for (int i = 0; i < chapter; i++) {
@@ -783,23 +919,29 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 pre_count += book_num_page[i][j];
             }
         }
+        int entire_sec = 0;
+        for (int i = 0; i < chapter; i++) {
+            entire_sec += text.title[i].length;
+        }
+        entire_sec += section;
         pre_count += cur_page;
-        tts.speak("百分之"+(int) ((pre_count+1) * 100/total_page_in_book) + ",第"+(chapter+1)+"章，第"+(section+1)+"节", QUEUE_FLUSH, null, null);
+        tts.speak("百分之"+(int) ((pre_count+1) * 100/total_page_in_book) + ",第"+(chapter+1)+"部分，第"+(entire_sec+1)+"章", QUEUE_FLUSH, null, null);
         listening = false;
     }
 
 
     private void onSwipeDown() {
         if (two_fingers) {
-            Toast.makeText(MainActivity.this, "two finger swipe down", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "two finger swipe down", Toast.LENGTH_SHORT).show();
             tell_book_loca();
         } else {
-            Toast.makeText(MainActivity.this, "one finger swipe down", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "one finger swipe down", Toast.LENGTH_SHORT).show();
             tell_page_loca();
         }
     }
 
     private void to_page_start() {
+        Log.d("debugging","listening status is "+listening);
         if (!listening) return;
         if (tts.isSpeaking()) {
             tts.stop();
@@ -814,16 +956,80 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             }
             i++;
         }
+        generateNoteOnSD(file_name, "back_page_l " + System.currentTimeMillis());
+        dictionary.put("back_page_l", dictionary.get("back_page_l")+1);
+        Log.d("debugging","reached here");
         startPlay(sen, -1);
     }
 
     private void onSwipeUp() {
         if (two_fingers) {
-            Toast.makeText(MainActivity.this, "two finger swipe up", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "two finger swipe up", Toast.LENGTH_SHORT).show();
             to_page_start();
         } else {
-            Toast.makeText(MainActivity.this, "one finger swipe up", Toast.LENGTH_SHORT).show();
+            //Toast.makeText(MainActivity.this, "one finger swipe up", Toast.LENGTH_SHORT).show();
             restart_cur_sentence();
+        }
+    }
+
+    private boolean isExternalStorageWritable() {
+        if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private static boolean isExternalStorageAvailable() {
+        String extStorageState = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(extStorageState)) {
+            return true;
+        }
+        return false;
+    }
+
+    public void generateNoteOnSD(String sFileName, String sBody) {
+        FileOutputStream fos ;
+        Log.d("writingexternalfile", sFileName);
+        //Toast.makeText(MainActivity.this, isExternalStorageAvailable(), Toast.LENGTH_SHORT).show();
+        try {
+            fos = new FileOutputStream(new File(getExternalFilesDir("android"), sFileName), true);
+
+            FileWriter fWriter;
+
+            try {
+                fWriter = new FileWriter(fos.getFD());
+                fWriter.write(sBody);
+                fWriter.write("\n");
+                fWriter.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                fos.getFD().sync();
+                fos.close();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void writeFile(View v) {
+        if (isExternalStorageWritable()) {
+            Toast.makeText(MainActivity.this, Environment.getExternalStorageState(), Toast.LENGTH_SHORT).show();
+            try {
+                File root = Environment.getExternalStorageDirectory();
+                File dir = new File(root.getAbsolutePath()+"/download");
+                Toast.makeText(MainActivity.this, root.getAbsolutePath(), Toast.LENGTH_SHORT).show();
+                dir.mkdirs();
+                File textFile = new File(dir, "mydata.txt");
+                FileWriter writer = new FileWriter(textFile);
+                writer.append("bla");
+                writer.flush();
+                writer.close();
+                Log.d("writingexternalfile", String.valueOf(textFile.getAbsolutePath()));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 

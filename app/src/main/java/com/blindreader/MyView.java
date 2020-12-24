@@ -5,15 +5,19 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.speech.tts.TextToSpeech;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.annotation.Nullable;
 import androidx.core.view.GestureDetectorCompat;
+
+import java.util.Set;
 
 public class MyView extends View {
     private static final String TAG = "order";
@@ -24,12 +28,18 @@ public class MyView extends View {
     public int edge = 150;
     public Text text = new Text();
     int[] highlighted = {-1,-1};
+    private Paint textPaint = new Paint();
+    StaticLayout staticLayout;
+
     //highlighted = {col, row};
 
     public MyView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         blackLine.setStyle(Paint.Style.STROKE);
         fill.setStyle(Paint.Style.FILL_AND_STROKE);
+        textPaint.setTextSize(40);
+        textPaint.setAntiAlias(true);
+        textPaint.setTextAlign(Paint.Align.CENTER);
     }
 
     public void setDimension(int row, int col) {
@@ -109,8 +119,11 @@ public class MyView extends View {
                 return;
             }
             double cur_time = System.currentTimeMillis();
-            if (cur_time - lastTime[word_index] < 850) {
+            if (cur_time - lastTime[word_index] < 2000) {
                 return;
+            }
+            if (col == num_col-1) {
+
             }
             if (!tts.isSpeaking()) {
                 tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
@@ -161,6 +174,9 @@ public class MyView extends View {
         int bottom = (r+1) * cell_height + edge;
         //Log.d(TAG, "onDraw: " + cell_width +","+cell_height);
         draw_canvas.drawRect(left, top, right, bottom, p);
+        if (MainActivity.cur_page*num_col*num_row +r * num_col + c < text.word_text[MainActivity.chapter][MainActivity.section].length) {
+            draw_canvas.drawText(text.word_text[MainActivity.chapter][MainActivity.section][MainActivity.cur_page*num_col*num_row + r * num_col + c],(left+right)/2, top, textPaint);
+        }
     }
 
     @Override
@@ -175,6 +191,51 @@ public class MyView extends View {
         if (highlighted[0] != -1 & highlighted[1] != -1) {
             drawRec(highlighted[0], highlighted[1], canvas, fill);
         }
+        String print = "";
+        String print2 = "";
+        String print3 = "";
+        String print4 = "";
+        String print5 = "";
+        if (MainActivity.dictionary != null) {
+            int count = 0;
+            Set<String> keys = MainActivity.dictionary.keySet();
+            for (String key: keys) {
+                if (count < 4) {
+                    print += String.valueOf(key);
+                    print += ":";
+                    print += String.valueOf(MainActivity.dictionary.get(key));
+                    print += "  ";
+                } else if (count < 8) {
+                    print2 += String.valueOf(key);
+                    print2 += ":";
+                    print2 += String.valueOf(MainActivity.dictionary.get(key));
+                    print2 += "  ";
+                } else if (count < 12) {
+                    print3 += String.valueOf(key);
+                    print3 += ":";
+                    print3 += String.valueOf(MainActivity.dictionary.get(key));
+                    print3 += "  ";
+                } else if (count < 16) {
+                    print4 += String.valueOf(key);
+                    print4 += ":";
+                    print4 += String.valueOf(MainActivity.dictionary.get(key));
+                    print4 += "  ";
+                } else {
+                    print5 += String.valueOf(key);
+                    print5 += ":";
+                    print5 += String.valueOf(MainActivity.dictionary.get(key));
+                    print5 += "  ";
+                }
+                count += 1;
+            }
+        }
+
+
+        canvas.drawText(print, 600, 2280, textPaint);
+        canvas.drawText(print2, 600, 2330, textPaint);
+        canvas.drawText(print3, 600, 2380, textPaint);
+        canvas.drawText(print4, 600, 2430, textPaint);
+        canvas.drawText(print5, 600, 2480, textPaint);
         super.onDraw(canvas);
     }
 
