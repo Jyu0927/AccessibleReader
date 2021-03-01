@@ -119,7 +119,7 @@ public class MyView extends View {
                 return;
             }
             double cur_time = System.currentTimeMillis();
-            if (cur_time - lastTime[word_index] < 2000) {
+            if (cur_time - lastTime[word_index] < 1200) {
                 return;
             }
             if (col == num_col-1) {
@@ -132,7 +132,7 @@ public class MyView extends View {
                 tts.stop();
                 tts.speak(text[word_index], TextToSpeech.QUEUE_FLUSH, null, "word-"+word_index);
             }
-            lastTime[word_index] = cur_time;
+            //lastTime[word_index] = cur_time;
             //Log.d(TAG, "getHighlightCell: cors are"+row+","+col);
             //tts.stop();
             //you may want to change the utteranceid to word_index

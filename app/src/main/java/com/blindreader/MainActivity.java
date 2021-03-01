@@ -259,6 +259,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                         String[] parts = s.split("-");
                         if (parts[0].equals("word")) {
                             word_index = Integer.parseInt(parts[1]);
+                            word_last_touched_time[word_index] = System.currentTimeMillis();
                             return;
                         }
                         if (parts[0].equals("single")) {
@@ -778,7 +779,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 Log.d("swiping", "wrong place");
                 swiping = true;
                 if (diffX > 0) {
-                    if (motionEvent.getX() < 15) {
+                    if (motionEvent.getX() < 30) {
                         //Toast.makeText(MainActivity.this, "swipe right from left edge", Toast.LENGTH_SHORT).show();
                         tts.stop();
                         tts.speak("打开目录", QUEUE_FLUSH, null, null);
