@@ -24,6 +24,10 @@ import android.view.Window;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.jpmml.evaluator.Evaluator;
+import org.jpmml.evaluator.LoadingModelEvaluatorBuilder;
+import org.xml.sax.SAXException;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
@@ -98,9 +102,17 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
     public static int section;
     int total_page_in_book;
     public String file_name;
+    public String gesture_cords_file;
+    public String gesture_cords;
+    public static long last_cords_time;
+    public static int touch_page;
+    public static int last_row;
 
     //for counting things unrelated to the APP itself
     public static Map <String, Integer> dictionary;
+
+    public MainActivity() throws IOException, SAXException {
+    }
 
 
     @Override
@@ -130,13 +142,14 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         myview.invalidate();
         Bundle extras = getIntent().getExtras();
         if (extras == null) {
-            chapter = 0;
+            chapter = 1;
             section = 0;
         } else {
             chapter = extras.getInt("CHAPTER_ID");
             section = extras.getInt("SECTION_ID");
         }
         file_name = instant +"_"+chapter+"_"+section+".txt";
+        gesture_cords_file = instant + "_"+chapter+"_"+section+"_cords.txt";
         Log.d("filenamechanged",file_name);
         textContent = text.rawtext[chapter][section];
         if (textContent.equals("")) {
@@ -180,6 +193,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 window.findViewById(Window.ID_ANDROID_CONTENT).getTop();
         //int titleBarHeight= contentViewTop - statusBarHeight;
         TypedValue tv = new TypedValue();
+        Log.d(TAG, "offsetis" + (statusBarHeight+contentViewTop));
 
         /*cur_sentence = 0;
         cur_page = 0;
@@ -246,13 +260,18 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         dictionary.put("book_status_l", 0);
         dictionary.put("book_status_t", 0);
 
+        gesture_cords = "";
+        last_cords_time = 0;
+        touch_page = -1;
+        generateNoteOnSD(gesture_cords_file, (statusBarHeight+contentViewTop) + " " + myview.num_row + " " + myview.num_col + " " + myview.cell_height + " " + myview.cell_width + " " + myview.edge + "l");
+        last_row = -1;
 
         if (status == SUCCESS) {
             int result = tts.setLanguage(Locale.CHINESE);
             tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                 @Override
                 public void onStart(String s) {
-                    Log.d("messageis", s);
+                    Log.d("debug_problem_start", s);
                     try {
                         cur_sentence = Integer.parseInt(s);
                     } catch (NumberFormatException e) {
@@ -318,10 +337,19 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             return;
         }
         for (int c = cur_num; c < sentence_text.length; c++) {
+            char last = sentence_text[c].charAt(sentence_text[c].length()-1);
+            Log.d("stringis", Character.toString(last));
             if (c == cur_num) {
                 if (word_index == -1) {
                     tts.speak(sentence_text[c], QUEUE_FLUSH, null, String.valueOf(c));
                     tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                    if (last == '/') {
+                        tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                        tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                        tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                        tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                        tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                    }
                 } else {
                     String[] parts = Arrays.copyOfRange(word_text_original, word_index, cumulative_words_count[cur_num]);
                     //String[] parts = sentence_text[c].split(word);
@@ -329,8 +357,15 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                     tts.speak(String.join("", parts), QUEUE_FLUSH, null, String.valueOf(c));
                 }
             } else {
-                tts.speak(sentence_text[c], QUEUE_ADD, null, String.valueOf(c));
+                tts.speak(sentence_text[c], QUEUE_ADD, null, null);
                 tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                if (last == '/') {
+                    tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                    tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                    tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                    tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                    tts.speak("，", QUEUE_ADD, null, String.valueOf(c));
+                }
             }
         }
     }
@@ -373,6 +408,42 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 //two_fingers = false;
                 //return myDetector.onTouchEvent(event);
             } else if (time_diff > 200 && !swiping && !two_fingers && (System.currentTimeMillis() - stop_lastTime > 300)) {
+                long cur_time = System.currentTimeMillis();
+                if (cur_time - last_cords_time > 50 && !progress_bar_pressed) {
+                    Log.d("gesture_cords", e.getX() + "," + e.getY());
+                    Log.d("gesture_cords", "cords is" + gesture_cords);
+                    last_cords_time = cur_time;
+                    if (touch_page != cur_page && touch_page != -1) {
+                        if (last_cords_time != 0) {
+                            generateNoteOnSD(gesture_cords_file, gesture_cords + "p");
+                            gesture_cords = "";
+                            last_cords_time = 0;
+                            last_row = -1;
+                        }
+                    }
+                    touch_page = cur_page;
+                    String cords = String.format("%.2f", e.getX()) + "," + String.format("%.2f", e.getY()) + " ";
+                    gesture_cords += cords;
+                    int row = (int) (e.getY() - (float) myview.edge-contentViewTop-statusBarHeight) / myview.cell_height;
+                    if (last_row == -1) {
+                        last_row = row;
+                    } else if (last_row - row == 1 | row - last_row == 1) {
+                        Log.d("detected chuanhang", last_row + "," + row);
+                        float x_displace = e.getX() - last_x;
+                        if (x_displace == 0){
+                            x_displace = 1;
+                        }
+                        float slope = Math.abs((e.getY() - last_y)/ x_displace);
+                        Log.d("detected chuanhang", x_displace + "," + slope);
+                        if (x_displace > 0 && slope < 3) {
+                            Log.d("detected chuanhang", "yes");
+                            vibrator.vibrate(VibrationEffect.createOneShot(500, 60));
+                        }
+                        last_row = row;
+                        gesture_cords += "]";
+                    }
+                }
+
                 //Toast.makeText(MainActivity.this, "dragging", Toast.LENGTH_SHORT).show();
                 Log.d("debugging", "truth is  "+(listening));
                 if (!progress_bar_pressed && !listening) {
@@ -393,6 +464,13 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             last_x = e.getX();
             last_y = e.getY();
         } else if (action == MotionEvent.ACTION_POINTER_UP) {
+            if (last_cords_time != 0) {
+                generateNoteOnSD(gesture_cords_file, gesture_cords);
+                gesture_cords = "";
+                last_cords_time = 0;
+                last_row = -1;
+                Log.d("gesture_cords", "up1");
+            }
             if (two_fingers && (Math.hypot(e.getX() - first_x, e.getY() - first_y) < 100)){
                 //Toast.makeText(MainActivity.this, "two finger single click", Toast.LENGTH_SHORT).show();
                 Log.d("gesture", "TWO FINGERS SINGLE_CLICK !");
@@ -406,9 +484,15 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
                 two_fingers = false;
             }
         } else if (action == MotionEvent.ACTION_UP) {
+            if (last_cords_time != 0) {
+                generateNoteOnSD(gesture_cords_file, gesture_cords);
+                gesture_cords = "";
+                last_cords_time = 0;
+            }
             last_time = 0;
             last_x = 0;
             last_y = 0;
+            last_row = -1;
             swiping = false;
             if (last_highlighted[0] != -1) {
                 int word_index = cur_page * myview.num_row * myview.num_col + last_highlighted[1] * myview.num_col + last_highlighted[0];
@@ -469,10 +553,10 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         }
         cur_sentence -= 1;
         if (listening) {
-            generateNoteOnSD(file_name, "back_sen_l " + System.currentTimeMillis());
+            generateNoteOnSD(file_name, "back_sen_l " + cur_sentence + " " + sentence_text[cur_sentence] + " " + System.currentTimeMillis());
             dictionary.put("back_sen_l", dictionary.get("back_sen_l")+1);
         } else {
-            generateNoteOnSD(file_name, "back_sen_t " + System.currentTimeMillis());
+            generateNoteOnSD(file_name, "back_sen_t " + cur_sentence + " " + sentence_text[cur_sentence] + " " + System.currentTimeMillis());
             dictionary.put("back_sen_t", dictionary.get("back_sen_t")+1);
         }
         next_sentence();
@@ -483,6 +567,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         stop_lastTime = System.currentTimeMillis();
         tts.stop();
         cur_page = sen_start_on_page[cur_sentence];
+        Log.d("debug_problem_touch", String.valueOf(cur_sentence));
         Log.d(TAG, "onTouchEvent: page is "+sen_start_on_page[cur_sentence]);
         //Toast.makeText(MainActivity.this, "stopped at sentence " + (cur_sentence), Toast.LENGTH_SHORT).show();
         //local_lis = false;
@@ -681,6 +766,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             i++;
         }
         cur_sentence = sen;
+        Log.d("debug_problem_cur_sen", String.valueOf(cur_sentence));
         generateNoteOnSD(file_name, "next_page_t " + System.currentTimeMillis());
         dictionary.put("next_page_t", dictionary.get("next_page_t")+1);
     }
@@ -721,6 +807,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             tts.stop();
         }
         int page = sen_start_on_page[cur_sentence];
+        Log.d("debug_problem1", String.valueOf(page));
         page += 1;
         if (page >= page_count) {
             page -= 1;
@@ -735,6 +822,7 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
             }
             i++;
         }
+        Log.d("debug_problem1", String.valueOf(page));
         generateNoteOnSD(file_name, "next_page_l " + System.currentTimeMillis());
         dictionary.put("next_page_l", dictionary.get("next_page_l")+1);
         startPlay(sen, -1);
@@ -823,10 +911,10 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         tts.speak(sentence_text[cur_sentence], QUEUE_FLUSH, null, "single-"+String.valueOf(cur_sentence));
         if (!listening) {
             listening = true;
-            generateNoteOnSD(file_name, "last_sen_t " + System.currentTimeMillis());
+            generateNoteOnSD(file_name, "last_sen_t " + cur_sentence + " " + sentence_text[cur_sentence] + " " + System.currentTimeMillis());
             dictionary.put("last_sen_t", dictionary.get("last_sen_t")+1);
         } else {
-            generateNoteOnSD(file_name, "last_sen_l " + System.currentTimeMillis());
+            generateNoteOnSD(file_name, "last_sen_l " +  cur_sentence + " " + sentence_text[cur_sentence] + " " + System.currentTimeMillis());
             dictionary.put("last_sen_l", dictionary.get("last_sen_l")+1);
         }
 
@@ -875,10 +963,10 @@ public class MainActivity extends AppCompatActivity implements GestureDetector.O
         } else {
             //Toast.makeText(MainActivity.this, "one finger swipe right", Toast.LENGTH_SHORT).show();
             if (!listening) {
-                generateNoteOnSD(file_name, "next_sen_t " + System.currentTimeMillis());
+                generateNoteOnSD(file_name, "next_sen_t " + cur_sentence + " " + sentence_text[cur_sentence] + " " + System.currentTimeMillis());
                 dictionary.put("next_sen_t", dictionary.get("next_sen_t")+1);
             } else {
-                generateNoteOnSD(file_name, "next_sen_l " + System.currentTimeMillis());
+                generateNoteOnSD(file_name, "next_sen_l " + cur_sentence + " " + sentence_text[cur_sentence] + " " + System.currentTimeMillis());
                 dictionary.put("next_sen_l", dictionary.get("next_sen_l")+1);
             }
             next_sentence();
